@@ -783,9 +783,6 @@
     for (NSInteger i = 0; i < layoutAttributesForPinnedSupplementaryItems.count; i++) {
         CGPoint contentOffset = self.collectionView.contentOffset;
         UICollectionViewLayoutAttributes *attributes = layoutAttributesForPinnedSupplementaryItems[i];
-        if (!CGRectIntersectsRect(attributes.frame, rect)) {
-            continue;
-        }
 
         if (@available(iOS 11.0, *)) {
             if ([self.collectionView respondsToSelector:@selector(safeAreaInsets)]) {
@@ -814,6 +811,9 @@
         }
 
         attributes.frame = frame;
+        if (CGRectIntersectsRect(attributes.frame, rect)) {
+            [layoutAttributes addObject:attributes];
+        }
     }
 
     return layoutAttributes;
