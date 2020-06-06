@@ -366,7 +366,7 @@
                         }
                         for (IBPCollectionViewOrthogonalScrollerSectionController *controller in orthogonalScrollerSectionControllers.allValues) {
                             CGRect frame = controller.scrollView.frame;
-                            if (CGRectGetMinY(frame) >= CGRectGetMinY(itemFrame)) {
+                            if ((CGRectGetMinY(frame) - CGRectGetMinY(itemFrame)) >= -1.f) {
                                 frame.origin.y += extendHeight;
                                 controller.scrollView.frame = frame;
                                 contentFrame = CGRectUnion(contentFrame, frame);
