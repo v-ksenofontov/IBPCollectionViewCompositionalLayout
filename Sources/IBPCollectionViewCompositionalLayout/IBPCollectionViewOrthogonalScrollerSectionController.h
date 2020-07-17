@@ -8,6 +8,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) UICollectionView *scrollView;
 @property (nonatomic) NSInteger sectionIndex;
 
+@property (nonatomic) NSObject* sectionIdentifier; //VK reuse key
+
 - (instancetype)initWithSectionIndex:(NSInteger)sectionIndex
                       collectionView:(UICollectionView *)collectionView
                           scrollView:(UICollectionView *)scrollView;

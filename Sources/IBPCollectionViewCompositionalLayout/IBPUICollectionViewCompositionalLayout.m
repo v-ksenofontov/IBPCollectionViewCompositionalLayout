@@ -26,7 +26,8 @@
 
     CGRect contentFrame;
     NSMutableDictionary<NSNumber *, IBPCollectionViewOrthogonalScrollerSectionController *> *orthogonalScrollerSectionControllers;
-
+    NSMutableDictionary<NSNumber *, IBPCollectionViewOrthogonalScrollerSectionController *> *prev_orthogonalScrollerSectionControllers; //VK
+	
     NSMutableArray<IBPCollectionCompositionalLayoutSolver *> *solvers;
 }
 
@@ -118,6 +119,8 @@
     [layoutAttributesForPinnedSupplementaryItems removeAllObjects];
     self.hasPinnedSupplementaryItems = NO;
 
+	prev_orthogonalScrollerSectionControllers = [orthogonalScrollerSectionControllers copy]; //VK
+	
     [[orthogonalScrollerSectionControllers allValues] makeObjectsPerformSelector:@selector(removeFromSuperview)];
     [orthogonalScrollerSectionControllers removeAllObjects];
 
@@ -251,11 +254,31 @@
                 supplementaryAttributes[[NSString stringWithFormat:@"%@-%zd-%zd", supplementaryItem.elementKind, indexPath.section, indexPath.item]] = attributes;
             }];
         }
-
+		
         if (layoutSection.scrollsOrthogonally) {
             IBPCollectionViewOrthogonalScrollerSectionController *controller = orthogonalScrollerSectionControllers[@(sectionIndex)];
 
             UICollectionView *scrollView = [self setupOrthogonalScrollViewForSection:layoutSection];
+			
+			//VK {{
+			NSObject *sectionIdentifier = nil;
+			IBPCollectionViewOrthogonalScrollerSectionController *prev_controller = nil;
+			if (layoutSection.scrollsOrthogonally && [self.collectionView.dataSource respondsToSelector:@selector(objc_sectionIdentifiers)])
+			{
+				NSArray<NSObject *> *sectionIdentifiers = [self.collectionView.dataSource performSelector:@selector(objc_sectionIdentifiers)];
+				
+				if (sectionIndex < sectionIdentifiers.count) {
+					sectionIdentifier = sectionIdentifiers[sectionIndex]; // key for reuse
+				
+					IBPCollectionViewOrthogonalScrollerSectionController *prev_controller = prev_orthogonalScrollerSectionControllers[@(sectionIndex)];
+				
+					if ([sectionIdentifier isEqual: prev_controller.sectionIdentifier]) {
+						scrollView = prev_controller.scrollView; //VK reuse !!!
+					}
+				}
+			}
+			//VK }}
+			
             if (@available(iOS 11.0, *)) {
                 if ([scrollView respondsToSelector:@selector(setContentInsetAdjustmentBehavior:)] && [collectionView respondsToSelector:@selector(contentInsetAdjustmentBehavior)]) {
                     scrollView.contentInsetAdjustmentBehavior = collectionView.contentInsetAdjustmentBehavior;
@@ -293,6 +316,8 @@
 
             controller = [[IBPCollectionViewOrthogonalScrollerSectionController alloc] initWithSectionIndex:sectionIndex collectionView:self.collectionView scrollView:scrollView];
             orthogonalScrollerSectionControllers[@(sectionIndex)] = controller;
+			
+			controller.sectionIdentifier = sectionIdentifier; //VK reuse key
         }
 
         CGSize extendedBoundary = CGSizeZero;
