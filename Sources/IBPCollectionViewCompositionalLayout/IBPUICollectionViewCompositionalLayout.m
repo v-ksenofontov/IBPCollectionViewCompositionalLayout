@@ -258,9 +258,10 @@
         if (layoutSection.scrollsOrthogonally) {
             IBPCollectionViewOrthogonalScrollerSectionController *controller = orthogonalScrollerSectionControllers[@(sectionIndex)];
 
-            UICollectionView *scrollView = [self setupOrthogonalScrollViewForSection:layoutSection];
-			
 			//VK {{
+			//original: UICollectionView *scrollView = [self setupOrthogonalScrollViewForSection:layoutSection];
+			UICollectionView *scrollView = nil;
+			
 			NSObject *sectionIdentifier = nil;
 			IBPCollectionViewOrthogonalScrollerSectionController *prev_controller = nil;
 			if (layoutSection.scrollsOrthogonally && [self.collectionView.dataSource respondsToSelector:@selector(objc_sectionIdentifiers)])
@@ -276,6 +277,10 @@
 						scrollView = prev_controller.scrollView; //VK reuse !!!
 					}
 				}
+			}
+			
+			if (scrollView == nil) {
+				scrollView = [self setupOrthogonalScrollViewForSection:layoutSection];
 			}
 			//VK }}
 			
