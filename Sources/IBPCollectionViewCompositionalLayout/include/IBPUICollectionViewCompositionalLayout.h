@@ -29,6 +29,12 @@ typedef IBPNSCollectionLayoutSection * _Nullable (^IBPUICollectionViewCompositio
 //    Note: any changes made to properites directly will have no effect.
 @property (nonatomic, copy) IBPUICollectionViewCompositionalLayoutConfiguration *configuration;
 
+//VK {{
+@property (nonatomic) BOOL isPreloadingCellEnabled;
+@property (nonatomic) BOOL isPreloadingCellCacheEnabled;
+- (void)resetPreloadingCellCache;
+//VK }}
+
 @end
 
 NS_ASSUME_NONNULL_END

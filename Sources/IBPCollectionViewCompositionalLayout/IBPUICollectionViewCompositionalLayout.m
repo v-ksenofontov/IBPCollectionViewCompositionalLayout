@@ -23,6 +23,8 @@
     NSMutableDictionary<NSString *, UICollectionViewLayoutAttributes *> *cachedDecorationAttributes;
     NSMutableArray<IBPNSCollectionLayoutSupplementaryItem *> *globalSupplementaryItems;
     NSMutableArray<UICollectionViewLayoutAttributes *> *layoutAttributesForPinnedSupplementaryItems;
+	
+	NSMutableDictionary<NSIndexPath *, UICollectionViewLayoutAttributes *> *cachedPreloadingItemAttributes; 	//VK
 
     CGRect contentFrame;
     NSMutableDictionary<NSNumber *, IBPCollectionViewOrthogonalScrollerSectionController *> *orthogonalScrollerSectionControllers;
@@ -98,6 +100,8 @@
         layoutAttributesForPinnedSupplementaryItems = [[NSMutableArray alloc] init];
         orthogonalScrollerSectionControllers = [[NSMutableDictionary alloc] init];
         solvers = [[NSMutableArray alloc] init];
+		
+		cachedPreloadingItemAttributes = [[NSMutableDictionary alloc] init];
     }
     return self;
 }
@@ -109,6 +113,10 @@
 
 - (UICollectionViewScrollDirection)scrollDirection {
     return self.configuration.scrollDirection;
+}
+
+- (void)resetPreloadingCellCache {
+	[cachedPreloadingItemAttributes removeAllObjects];
 }
 
 - (void)resetState {
@@ -186,6 +194,8 @@
         [solvers addObject:solver];
         [solver solveForContainer:collectionContainer traitCollection:environment.traitCollection];
 
+		CGSize shift = {0}; //VK
+		
         NSInteger numberOfItems = [collectionView numberOfItemsInSection:sectionIndex];
         for (NSInteger itemIndex = 0; itemIndex < numberOfItems; itemIndex++) {
             NSIndexPath *indexPath = [NSIndexPath indexPathForItem:itemIndex inSection:sectionIndex];
@@ -204,12 +214,105 @@
 
             cellAttributes.frame = cellFrame;
             cellAttributes.zIndex = layoutSection.hasBackgroundDecorationItem ? 1 : 0;
+			
+			//VK {{ preloading to correct size and position calculation
+			IBPNSCollectionLayoutItem *layoutItem = [solver layoutItemAtIndexPath:indexPath];
+			if(self.isPreloadingCellEnabled) {
+				//IBPNSCollectionLayoutItem *layoutItem = [solvers[indexPath.section] layoutItemAtIndexPath:indexPath];
+				IBPNSCollectionLayoutSize *layoutSize = layoutItem.layoutSize;
+				if (layoutSize.widthDimension.isEstimated || layoutSize.heightDimension.isEstimated) {
+					CGSize estimatedSize = cellFrame.size;
+					
+					UICollectionViewLayoutAttributes *attributes = cellAttributes;
+					NSArray *itemAttributes = cachedItemAttributes.allValues;
+					
+					BOOL isUsedCachedAttributes = FALSE;
+					UICollectionViewLayoutAttributes *cachedAttributes = cachedPreloadingItemAttributes[indexPath];
+					if(self.isPreloadingCellCacheEnabled && cachedAttributes != nil) {
+						cachedAttributes = cachedPreloadingItemAttributes[indexPath];
+						if (layoutSize.heightDimension.isEstimated && cachedAttributes.frame.size.width == attributes.frame.size.width) {
+							CGSize fitSize = cachedAttributes.frame.size;
+							
+							// UPDATE cellAttributes
+							CGRect frame = attributes.frame;
+							frame.size = fitSize;
+							frame.origin = CGPointMake(frame.origin.x + shift.width, frame.origin.y + shift.height);
+							attributes.frame = frame;
+							
+							// UPDATE cellFrame
+							cellFrame = cellAttributes.frame;
+							
+							shift.height += frame.size.height - estimatedSize.height;
+							shift.width += frame.size.width - estimatedSize.width;
+							//NSLog(@">>> shift - cashed %@", NSStringFromCGSize(shift));
+							
+							isUsedCachedAttributes = TRUE;
+						}
+					}
+					
+					if (!isUsedCachedAttributes) {
+						UICollectionViewCell *cell = [self.collectionView.dataSource collectionView:self.collectionView cellForItemAtIndexPath:attributes.indexPath];
+						if (cell) {
+							CGSize containerSize = self.collectionViewContentSize;
+							if (!layoutSize.widthDimension.isEstimated) {
+								containerSize.width = CGRectGetWidth(attributes.frame);
+							}
+							if (!layoutSize.heightDimension.isEstimated) {
+								containerSize.height = CGRectGetHeight(attributes.frame);
+							}
+							
+							CGFloat containerWidth = containerSize.width;
+							CGFloat containerHeight = containerSize.height;
+							
+							CGRect _cellFrame = cell.frame;
+							_cellFrame.size = containerSize;
+							cell.frame = _cellFrame;
+							
+							//VK: fix for preload cache + resize cell
+							[cell systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
+							
+							[cell setNeedsLayout];
+							[cell layoutIfNeeded];
+							
+							CGSize fitSize = [cell systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
+							if (!layoutSize.widthDimension.isEstimated) {
+								fitSize.width = containerWidth;
+							}
+							if (!layoutSize.heightDimension.isEstimated) {
+								fitSize.height = containerHeight;
+							}
+							
+							// UPDATE cellAttributes
+							CGRect frame = attributes.frame;
+							frame.size = fitSize;
+							frame.origin = CGPointMake(frame.origin.x + shift.width, frame.origin.y + shift.height);
+							attributes.frame = frame;
+							
+							// UPDATE cellFrame
+							cellFrame = cellAttributes.frame;
+							
+							shift.height += frame.size.height - estimatedSize.height;
+							shift.width += frame.size.width - estimatedSize.width;
+							//NSLog(@">>> shift %@", NSStringFromCGSize(shift));
+							
+							if(self.isPreloadingCellCacheEnabled) {
+								cachedPreloadingItemAttributes[indexPath] = attributes;
+							}
+						}
+					}
+				}
+			}
+			//VK }} preloading to correct size and position calculation
 
             if (!layoutSection.scrollsOrthogonally) {
                 cachedItemAttributes[indexPath] = cellAttributes;
+				
+				if(self.isPreloadingCellCacheEnabled) { //VK
+					cachedPreloadingItemAttributes[indexPath] = cellAttributes;
+				}
             }
 
-            IBPNSCollectionLayoutItem *layoutItem = [solver layoutItemAtIndexPath:indexPath];
+            //VK: orignal: IBPNSCollectionLayoutItem *layoutItem = [solver layoutItemAtIndexPath:indexPath];
             if (layoutSection.scrollsOrthogonally) {
                 CGRect frame = CGRectZero;
                 switch (self.scrollDirection) {
@@ -366,6 +469,13 @@
                     CGRect itemFrame = layoutAttributes.frame;
                     itemFrame.origin.y += sectionOrigin.y;
                     layoutAttributes.frame = itemFrame;
+					
+					//VK {{ https://github.com/kishikawakatsumi/IBPCollectionViewCompositionalLayout/pull/122
+					if (boundaryItem.extendsBoundary && extendedBoundary.height > CGRectGetHeight(itemFrame)) {
+						itemFrame.origin.y += extendedBoundary.height + boundaryItem.offset.y - CGRectGetHeight(itemFrame);
+						layoutAttributes.frame = itemFrame;
+					}
+					//VK }}
 
                     if (boundaryItem.extendsBoundary && extendedBoundary.height < CGRectGetHeight(itemFrame)) {
                         CGFloat extendHeight;
@@ -396,7 +506,11 @@
                         }
                         for (IBPCollectionViewOrthogonalScrollerSectionController *controller in orthogonalScrollerSectionControllers.allValues) {
                             CGRect frame = controller.scrollView.frame;
-                            if ((CGRectGetMinY(frame) - CGRectGetMinY(itemFrame)) >= -1.f) {
+//							//VK https://github.com/v-ksenofontov/IBPCollectionViewCompositionalLayout/commit/adde71c47b8aaad575ee16a4e1b9d815acba27b7?branch=adde71c47b8aaad575ee16a4e1b9d815acba27b7&diff=split
+//							CGFloat needToAddExtendHeightValue = (frame.origin.y - itemFrame.origin.y);
+//							if (needToAddExtendHeightValue >= -1.f) {
+//                          //original:
+							if ((CGRectGetMinY(frame) - CGRectGetMinY(itemFrame)) >= -1.f) {
                                 frame.origin.y += extendHeight;
                                 controller.scrollView.frame = frame;
                                 contentFrame = CGRectUnion(contentFrame, frame);
@@ -717,7 +831,16 @@
         NSIndexPath *indexPath = attributes.indexPath;
         IBPNSCollectionLayoutItem *layoutItem = [solvers[indexPath.section] layoutItemAtIndexPath:indexPath];
         IBPNSCollectionLayoutSize *layoutSize = layoutItem.layoutSize;
-        if (layoutSize.widthDimension.isEstimated || layoutSize.heightDimension.isEstimated) {
+		
+		//VK: disable layout for preloading
+		BOOL isUsedCachedAttributes = FALSE;
+		UICollectionViewLayoutAttributes *cachedAttributes = cachedPreloadingItemAttributes[indexPath];
+		if (self.isPreloadingCellCacheEnabled && cachedAttributes != nil) {
+			isUsedCachedAttributes = TRUE;
+		}
+		
+		if (!isUsedCachedAttributes && (layoutSize.widthDimension.isEstimated || layoutSize.heightDimension.isEstimated)) {
+//      if (layoutSize.widthDimension.isEstimated || layoutSize.heightDimension.isEstimated) {
             UICollectionViewCell *cell = [self.collectionView.dataSource collectionView:self.collectionView cellForItemAtIndexPath:attributes.indexPath];
             if (cell) {
                 CGSize containerSize = self.collectionViewContentSize;

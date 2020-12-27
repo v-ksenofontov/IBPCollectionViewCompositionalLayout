@@ -37,6 +37,27 @@
 		[self.nextResponder touchesMoved:touches withEvent:event];
 	}
 }
+
+- (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event {
+	[super touchesCancelled:touches withEvent:event];
+	
+	if (@available(iOS 13, *)) {
+		//
+	} else {
+		[self.nextResponder touchesCancelled:touches withEvent:event];
+	}
+}
+
+- (void)touchesEstimatedPropertiesUpdated:(NSSet<UITouch *> *)touches {
+	[super touchesEstimatedPropertiesUpdated:touches];
+	
+	if (@available(iOS 13, *)) {
+		//
+	} else {
+		[self.nextResponder touchesEstimatedPropertiesUpdated:touches];
+	}
+}
+
 //VK }}
 
 
